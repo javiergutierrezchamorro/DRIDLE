@@ -524,7 +524,7 @@ int16_code:
 	call	chk_indos		; Are we inside the kernel?
 	jnz	int16_h10		; Yes, jmp to old int 16 handler
 					;  for Kernel calls
-	cmp	ah, 0			; keyboard read?
+	test	ah, ah			; keyboard read?
 	je	int16_h20		;  yes, skip
 	cmp	ah, 10h			; No, extended keyboard read?
 	je	int16_h20		;  yes skip, No ...
@@ -1014,7 +1014,7 @@ endif
 ;	To read the tick count from the timer chip.
 ;
 read_timer:
-	mov	al,0
+	xor	al,al
 	out	TIMER_CMND_REG,al	; latch timer 0
 	in	al,TIMER_0_REG		; lsb
 	mov	ah,al
@@ -1196,7 +1196,7 @@ output8:
 bcd2bin:
 
 	push	bx
-	mov	bl,0			; start off without tens
+	xor	bl,bl			; start off without tens
 bcd2bin2:
 	cmp	al,10h			; check if more tens
 	jb	bcd2bin3		; all tens done
