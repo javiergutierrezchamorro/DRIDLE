@@ -8,9 +8,11 @@ dridle.exe : dridle.obj
 
 dridle.obj : dridle.asm driver.equ drmacros.equ idle.equ reqhdr.equ
 !ifdef USE_MASM
-        masm32 /DVBOX_CPU_HALT dridle.asm;
+        #masm32 /DVBOX_CPU_HALT dridle.asm;
+	masm32 dridle.asm;
 !else
-        wasm -q -wx -DVBOX_CPU_HALT dridle.asm
+        #wasm -q -wx -DVBOX_CPU_HALT dridle.asm
+	wasm -q -wx dridle.asm
 !endif
 
 
