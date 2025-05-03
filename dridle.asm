@@ -378,7 +378,9 @@ dd_output_10:
 ;
 	mov	di,es:[si]
 	mov	param_blk_off,di
-	add	si,2
+	;add	si,2
+	inc		si
+	inc		si
 	
 	mov	ax,es:[si]
 	mov	param_blk_seg,ax
@@ -623,7 +625,8 @@ int2f_code:
 	test	IDLE_FLAGS,IDLE_ON	; Is idling enabled?
 	jz	int2f_h10
 
-	mov	al,ALL_INTS		; Wait for the next hardware int
+	;mov	al,ALL_INTS		; Wait for the next hardware int
+	xor		al,al			; Wait for the next hardware int (AL=ALL_INTS)
 	call	go_to_sleep
 
 int2f_h10:
@@ -667,7 +670,8 @@ ifdef SKIP_INT8
 	mov	al,KBD_INT_MASK		; been taken over; if not then wait
 	jz	wait_k10		; until the next keyboard interrupt
 endif
-	mov	al,ALL_INTS
+	;mov	al,ALL_INTS
+	xor		al,al		;  (AL=ALL_INTS)
 wait_k10:
 	jmp	go_to_sleep
 
@@ -693,7 +697,8 @@ wait_k20:
 wait_idle:
 	call	chk_activity		; Activity detected?
 	jnz	wait_i10		; Yes, keep going
-	mov	al,ALL_INTS		; Wait for the next hardware int
+	;mov	al,ALL_INTS		; Wait for the next hardware int
+	xor		al,al		; Wait for the next hardware int  (AL=ALL_INTS)
 
 ; before we go to sleep, we must check the time taken to detect an idle. If
 ; this is a long time, we must assume that the application is not really idle
@@ -725,7 +730,8 @@ wait_i10:
 wait_idle28:
 	call	chk_activity		; Activity detected?
 	jnz	wait28_i10		; Yes, keep going
-	mov	al,ALL_INTS		; Wait for the next hardware int
+	;mov	al,ALL_INTS		; Wait for the next hardware int
+	xor		al,al			; Wait for the next hardware int  (AL=ALL_INTS)
 	jmp	go_to_sleep
 	
 wait28_i10:
@@ -798,7 +804,7 @@ if ITEST
 	in	al,ACTIVITY_PORT	; read the status
 	pop	dx
 chk_v10:
-	or	al,al			; any activity yet?
+	test	al,al			; any activity yet?
 	jnz	end_chk_activity	; Yes, then leave now
 endif
 
@@ -905,7 +911,7 @@ chk_indos:
 chk_i10:
 	mov	al,1
 chk_i20:
-	or	ax,ax
+	test	ax,ax
 	pop	ax
 	ret
 
