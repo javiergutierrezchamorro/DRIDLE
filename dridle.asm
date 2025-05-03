@@ -1222,7 +1222,7 @@ ICODE	segment	public word 'ICODE'	; initialization code
 	
 	even				; start this on a word boundary
 reusable:
-sign_on		db	'DRIDLE R1.09 installed.',CR,LF
+sign_on		db	'DRIDLE R1.10 installed.',CR,LF
 		db	EOM
 
 ;-------------------------------------------------------------------------- ;
