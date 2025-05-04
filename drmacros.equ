@@ -55,3 +55,21 @@ rd	macro	count
 	dd	count dup (?)
 	endm
 
+movsw2	macro
+	ifdef __386__
+		movsd
+	else
+		movsw
+		movsw
+	endif
+endm
+
+add2	macro reg
+	ifdef __386__
+		add reg, 2
+	else
+		inc reg
+		inc reg
+	endif
+endm
+

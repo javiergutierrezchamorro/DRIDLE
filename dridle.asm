@@ -32,7 +32,7 @@ CGROUP	group	CODE, RCODE, ICODE
 CG	equ	offset CGROUP
 	Assume	CS:CGROUP, DS:CGROUP, ES:CGROUP, SS:Nothing
 
-CODE	segment public word 'CODE'
+CODE	segment use16 public word 'CODE'
 
 public	int8_handler, int8_code, int16_handler, int16_code
 public	idle_detect, wait_idle, wait_keyin, wait_idle28 
@@ -209,7 +209,7 @@ idle_handler	proc	far
 idle_handler	endp
 CODE	ends
 
-RCODE	segment public 'RCODE'
+RCODE	segment use16 public 'RCODE'
 ; ---------------------------------------------------
 ; The code and data from here on can be run from ROM.
 ; ---------------------------------------------------
@@ -296,18 +296,21 @@ dd_ioctl_output:
 
 	mov	si,08*4			; Point to current INT8 offs
 	mov	di,offset old_int8
-	movsw				; Copy old offset
-	movsw				; Copy old segment
+	;movsw				; Copy old offset
+	;movsw				; Copy old segment
+	movsw2				; Copy old offset and old segment
 
 	mov	si,16h*4		; Point to current INT16h offs
 					; DI already points to old_int16
-	movsw				; Copy old offset
-	movsw				; Copy old segment
+	;movsw				; Copy old offset
+	;movsw				; Copy old segment
+	movsw2				; Copy old offset and old segment
 
 	mov 	si,2Fh*4		; Point to current INT2Fh offs
 					; DI already points to old_int2f
-	movsw				; Save old offset
-	movsw				; Save old segment
+	;movsw				; Save old offset
+	;movsw				; Save old segment
+	movsw2				; Copy old offset and old segment
 
 
 ifdef SKIP_INT8
@@ -379,8 +382,7 @@ dd_output_10:
 	mov	di,es:[si]
 	mov	param_blk_off,di
 	;add	si,2
-	inc		si
-	inc		si
+	add2 si
 	
 	mov	ax,es:[si]
 	mov	param_blk_seg,ax
@@ -1142,8 +1144,8 @@ set_tick:
 	
 ; set hundredths to zero in DX:CX
 
-	sub	dx,dx
-	sub	cx,cx			; CX:DX=32 bit tick count for 1/100s
+	xor	dx,dx
+	xor	cx,cx			; CX:DX=32 bit tick count for 1/100s
 	
 	mov	si,CG:tick_table	; counts of ticks/unit
 	mov	di,CG:count_table	; address of unit counts
@@ -1222,14 +1224,21 @@ RCODE	ends				; end of ROM device driver code
 ; The code from here on is only used during initailization and is discarded
 ; after driver INIT.
 ; -------------------------------------------------------------------------
-ICODE	segment	public word 'ICODE'	; initialization code
+ICODE	segment	use16 public word 'ICODE'	; initialization code
 
 	Assume	CS:CGROUP, DS:CGROUP, ES:CGROUP, SS:Nothing
 	
 	even				; start this on a word boundary
 reusable:
-sign_on		db	'DRIDLE R1.10 installed.',CR,LF
-		db	EOM
+	sign_on		db	'DRIDLE'
+	ifdef __386__
+		db '3'
+	endif
+	ifdef VBOX_CPU_HALT
+		db 'V'
+	endif
+	db ' R1.10 installed.',CR,LF
+	db	EOM
 
 ;-------------------------------------------------------------------------- ;
 ; Module INIT
