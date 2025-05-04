@@ -1230,14 +1230,23 @@ ICODE	segment	use16 public word 'ICODE'	; initialization code
 	
 	even				; start this on a word boundary
 reusable:
-	sign_on		db	'DRIDLE'
+	sign_on		db	'DRIDLE R1.10 	DR-DOS IDLE Driver',CR,LF
+	db 'Copyright (c) 1990 Digital Research Inc.	All rights reserved.',CR,LF
+	db 'Copyright (c) 2023 Michal Necasek',CR,LF
+	db 'Copyright (c) 2025 Javier Gutierrez	Public domain.',CR,CR,LF
+	db 'Using '
 	ifdef __386__
-		db '3'
+		db '386+'
+	else
+		db '8088+'
+		
 	endif
 	ifdef VBOX_CPU_HALT
-		db 'V'
+		db ' VirtualBox idle'
+	else
+		db ' HLT idle'
 	endif
-	db ' R1.10 installed.',CR,LF
+	db ' succesfuly installed.',CR,LF
 	db	EOM
 
 ;-------------------------------------------------------------------------- ;
@@ -1297,7 +1306,7 @@ parse_ok:
 	mov	RH0_RESIDENT,ax		; set end of device driver
 	mov	RH0_RESIDENT+2,cs
 	
-	sub	ax,ax			; initialization succeeded
+	xor	ax,ax			; initialization succeeded (return AX=0)
 	pop	bx
 	pop	es
 	ret
