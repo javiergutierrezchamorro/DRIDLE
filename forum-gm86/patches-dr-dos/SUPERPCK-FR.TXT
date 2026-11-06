@@ -1,0 +1,42 @@
+pklite -x superpck.exe
+sid
+rsuperpck.exe
+s227d
+"de %u K-octets %s
+.
+wsuperpck.exe
+rsuperpck.sb1
+s182d
+"de %u K-octets %s
+.
+wsuperpcksb1
+rsuperpck.sb6
+s1f5d
+"de %u K-octets %s
+.
+wsuperpck.sb6
+rsuperpck.sb7
+s187d
+"de %u K-octets %s
+.
+wsuperpck.sb7
+rsuperpck.sb8
+s13ed
+"de %u K-octets %s
+.
+wsuperpck.sb8
+q
+pklite superpck.exe
+sid
+rsuperpck.exe
+swa
+668
+.
+s1c
+b
+.
+sw71
+10d3
+.
+wsuperpck.exe
+q

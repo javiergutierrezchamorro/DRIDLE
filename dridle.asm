@@ -10,8 +10,21 @@
 	include	DRIVER.EQU		; device driver equates
 	include IDLE.EQU		; include custom equates
 	
-ITEST		equ	FALSE
-CR		equ	0dh
+ITEST	equ	FALSE
+; Uncomment to enable the Win3x.Org (gm86) enhancements:
+;PIC	equ	TRUE		; DRI EMM386.SYS V2.x V86 callback, PS/2 mouse IRQ mask,
+;				; CPU cache divider and midnight handling (build: -DPIC_SUP)
+
+ifdef SKIP_INT8
+TSR_CHECK	equ	TRUE		; chk_tsr and saved vector segments
+else
+ ifdef PIC_SUP
+TSR_CHECK	equ	TRUE
+ else
+TSR_CHECK	equ	FALSE
+ endif
+endif
+CR	equ	0dh
 LF		equ	0ah
 EOM		equ	'$'
 INT_8		equ	8h
@@ -40,7 +53,7 @@ public	chk_time, chk_activity, chk_indos, chk_int16
 public	go_to_sleep, read_timer, calc_idlecntdn, int2f_handler
 public	int2f_code, dd_init, init
 public	idle_intrpt, dd_open, dd_close, dd_ioctl_output
-ifdef SKIP_INT8
+if TSR_CHECK
 public	set_tick, bcd2bin, chk_tsr
 endif
 
@@ -77,7 +90,7 @@ old_int16_seg	dw	0
 old_int2f	label	dword		; original interrupt handler address
 old_int2f_off	dw	0
 old_int2f_seg	dw	0
-ifdef SKIP_INT8
+if TSR_CHECK
 int1C_seg	dw	0		; original INT1Ch segment
 int28_seg	dw	0		; original INT28h segment
 ; end of fixed data
@@ -85,11 +98,18 @@ int08_seg	dw	0		; initial (our) INT8 segment
 endif
 int16_seg	dw	0		; initial (our) INT16h segment
 
-ifdef SKIP_INT8
+if TSR_CHECK
 minutes		db	?
 hours		db	?
 hundredths	db	0
 seconds		db	?
+endif
+ifdef PIC_SUP
+pic		db	NOT 1 SHL 2	; IRQ mask: allow IRQ2 cascade (PS/2 mouse),
+				; and IRQ0 when no RTC is present (gm86)
+cpu		db	0		; CPU cache family divider for IDLE_CNTDN
+idle386		dw	CG:wait_idle-1	; Near return stub, patched to the DRI
+				; EMM386.SYS V2.x V86 callback when found
 endif
 
 ;----------------------------------------------------------------------------
@@ -216,7 +236,7 @@ RCODE	segment use16 public 'RCODE'
 
 	Assume	CS:CGROUP, DS:CGROUP, ES:CGROUP, SS:Nothing
 
-ifdef SKIP_INT8
+if TSR_CHECK
 	
 tick_table	dw	002DDh, 64h
 		dw	0AAB6h, 01h
@@ -264,8 +284,8 @@ idle_intrpt	endp
 dd_open:
 ;------
 ; This routine handles a DEVICE OPEN function. We just return with good
-; status
-	jmp	int_ret
+; status (gm86: fall through into dd_close and save the jmp)
+;	jmp	int_ret
 	
 	
 dd_close:
@@ -313,7 +333,7 @@ dd_ioctl_output:
 	movsw2				; Copy old offset and old segment
 
 
-ifdef SKIP_INT8
+if TSR_CHECK
 	mov	ax,word ptr (1ch*4+2)	; Get the current INT1ch segment
 	stosw				; Store to int1C_seg
 	mov	ax,word ptr (28h*4+2)	; Get the current INT28h segment
@@ -331,7 +351,7 @@ endif
 	stosw
 	mov	ax,ds
 	stosw
-ifdef SKIP_INT8
+if TSR_CHECK
 	mov	[int08_seg],ax		; Save new int8 handler seg
 endif
 
@@ -667,7 +687,7 @@ wait_keyin:
 	call	chk_int16		; Check if int 16h changed
 	call	chk_activity		; Activity detected?
 	jnz	wait_k20		; Yes, keep going
-ifdef SKIP_INT8
+if TSR_CHECK
 	call	chk_tsr			; Check if interrupt vectors have
 	mov	al,KBD_INT_MASK		; been taken over; if not then wait
 	jz	wait_k10		; until the next keyboard interrupt
@@ -759,20 +779,14 @@ wait28_i10:
 ;
 chk_time:
 	push	ax
-	push	cx
-	push	dx
-	push	di
+	push	di			; gm86: cx, dx and es are not modified
 	push	ds
-	push	es
 	call	read_timer		; how long did it take us to get here
 ; check the time taken to idle.
 	lds	di,es:param_blk		; Get the IDLE State Data Area
 	cmp	IDLE_CNTDN,ax		; Skip, if too long
-	pop	es
 	pop	ds
 	pop	di
-	pop	dx
-	pop	cx
 	pop	ax
 	ret				; CF=0 if idle; 1 if busy
 
@@ -801,18 +815,35 @@ chk_time:
 ; activity using V86 mode is present. That is normally not the case.
 ;
 chk_activity:
-if ITEST
+ifdef PIC_SUP
+	cmp	es:idle386,TRUE		; Is the DRI 386 activity driver loaded?
+	jnz	chk_floppy		; No, then skip the activity port check
+ if ACTIVITY_PORT LT 256
+	in	al,ACTIVITY_PORT	; read the status
+ else
+	push	dx
+	mov	dx,ACTIVITY_PORT	; read the status
+	in	al,dx
+	pop	dx
+ endif
+	test	al,al			; any activity yet?
+	jnz	end_chk_activity	; Yes, then leave now
+else
+ if ITEST
 	push	dx
 	in	al,ACTIVITY_PORT	; read the status
 	pop	dx
-chk_v10:
 	test	al,al			; any activity yet?
 	jnz	end_chk_activity	; Yes, then leave now
+ endif
 endif
 
 ; Before we go, we must ensure that the floppy disk is not still rotating
 ; on the time-out count at 40:3f in the BIOS data area. If this byte is
 ; zero then we can flag all is okay (ZF=1). If not, return ZF=0
+; gm86: check only the low nibble; any floppy access other than a read
+; on A: leaves the selected-drive and write/format bits set (bits 4-7),
+; which would have blocked every further idle entry with CMP ...,0
 
 chk_floppy:
 	push	es
@@ -820,7 +851,7 @@ chk_floppy:
 	mov	bx,40h
 	mov	es,bx
 	mov	bx,3fh
-	cmp	byte ptr es:[bx],0	; are we still counting?
+	test	byte ptr es:[bx],0FH	; are we still counting? (gm86)
 	pop	bx			; ZF=Set if not counting
 	pop	es
 	jz	no_activity		; If nothing happened, Skip
@@ -843,7 +874,7 @@ end_chk_activity:
 no_activity:
 	ret				; return with status in ZF.
 
-ifdef SKIP_INT8
+if TSR_CHECK
 
 ;-------------------------------------------------------------------------- ;
 ; Module CHK_TSR
@@ -881,7 +912,7 @@ chk_tsr10:
 	pop	ds
 	ret
 
-endif	; SKIP_INT8
+endif   ; TSR_CHECK
 
 ;-------------------------------------------------------------------------- ;
 ; Module CHK_INDOS
@@ -1001,10 +1032,46 @@ ifdef VBOX_CPU_HALT
 	out	dx,ax			; NB: Does not require to run
 					; with interrupts enabled!
 else
+ ifdef PIC_SUP
+	sti				; Enable INTerrupts
+	cmp	es:idle386,TRUE		; Is the DRI 386 driver loaded?
+	jz	go_to_p10		; Yes, use IDLE_PORT
+	and	al,es:pic		; Timer mask
+	mov	dx,0021h		; 8259 Control Port
+	mov	ah,al			; Copy INTerrupt Vector mask ah
+	in	al,dx			; Get the current value and save
+	push	ax			; on the stack
+	or	al,ah			; Set the requested interrupt mask
+	out	dx,al
+	call	es:idle386		; DRI EMM386.SYS doesn't halt CPU
+	hlt				; Wait for the INTerrupt
+	pop	ax			; Restore the original INTerrupt mask
+	out	dx,al			; and output to 8259
+	shr	ah,1
+	jnc	go_to_sleep_end		; Did we sleep thru int8's?
+	call	set_tick		; Yes! Must update the ROS tick count
+	jmp	go_to_p20
+go_to_p10:
+	not	al			; Complement AL
+	mov	dx,IDLE_PORT
+	out	dx,al			; set alarm on specified H/W event.
+	test	al,NOT TIMER_INT_MASK	; do we sleep through int8's ?
+	pushf
+	hlt				; go to sleep until next interrupt
+	popf
+	jnz	go_to_p17		; did we sleep thru int8s
+	call	set_tick		; Yes! Must update the ROS tick count
+go_to_p17:
+	mov	al,NOT ALL_INTS		; wake up on all ints now in case
+	out	dx,al			; application does HLT itself.
+go_to_p20:
+ else
 	sti				; Enable INTerrupts
 	hlt				; go to sleep until next interrupt
+ endif
 endif
 endif
+go_to_sleep_end:
 	popf				; Restore Interrupt State
 	pop	dx			; and registers
 	pop	ax
@@ -1047,7 +1114,7 @@ read_timer:
 ;
 calc_idlecntdn:
 	push	bx
-	push	cs
+	push	cx			; gm86: was push cs (typo)
 	push	dx
 	
 calc_10:
@@ -1066,7 +1133,9 @@ calc_10:
 	int	RTC_INT			; get time using ROS.
 	mov	ah,1			; perform int16 kbd status check
 	int	16h
-	
+        
+	call	read_timer		; gm86: fill the blank in the original
+					; published listing with a TIMER_READ
 	pop	bx			; start time in BX time now in AX
 
 ; The time taken should be time_now-start_time. However, the timer may
@@ -1085,6 +1154,11 @@ calc_10:
 	mul	cx
 	add	ax,100h			; allow for round down
 	and	ax,0ff00h		; round down to a clean figure
+ifdef PIC_SUP
+	mov	cl,es:cpu		; [0;4]: ..386SLC/486; 486SL/WB/DX4; P5..
+	shr	ax,cl			; divide the countdown for CPUs with
+					; internal cache (gm86)
+endif
 	mov	IDLE_CNTDN,ax		; Time it should take to idle
 	
 	pop	dx
@@ -1092,7 +1166,7 @@ calc_10:
 	pop	bx
 	ret
 
-ifdef SKIP_INT8
+if TSR_CHECK
 
 ;-------------------------------------------------------------------------- ;
 ; Module SET_TICK
@@ -1122,7 +1196,14 @@ set_tick:
 	
 	push	cs			; ds points to resident data seg
 	pop	ds
-	
+        
+ ifdef PIC_SUP
+	mov	ah,0			; read the system timer and keep the
+	int	RTC_INT			; midnight flag for the 40:70h update
+	cli
+	mov	ch,al			; save midnight flag
+	push	cx
+ endif
 	mov	ah,READ_RTC		; set function code to read RTC
 	int	RTC_INT			; get time using ROS.
 ; CH=hours in BCD. CL=minutes in BCD. DH=seconds in BCD. Convert from BCD to
@@ -1168,16 +1249,26 @@ output8:
 	push	dx			; save lo count
 	mov	ax, cx			; do hi count first
 	xor	dx, dx			; clear top
+ ifdef PIC_SUP
+	mov	ds,dx			; DS=0, for the midnight flag at 40:70h
+ endif
 	mov	bx, 100
 	div	bx			; top word div 100
 	mov	cx, ax			; keep it safe
 	pop	ax			; recover lo word
 	div	bx			; divide it (plus rem of hi)
 	mov	dx, ax			; and put result in right place
-	
+        
 	mov	ah,1			; set system timer
 	int	RTC_INT			; CX = high word, DX = low word
-	
+ ifdef PIC_SUP
+	cli
+	pop	ax			; AH: midnight flag
+	inc	cx			; gm86: handle the midnight passage when
+	cmp	cl,al			; the BIOS would have rolled over the
+	adc	ds:470h,ah		; tick count by itself
+ endif
+        
 	sti
 	pop	ds
 	pop	di
@@ -1216,8 +1307,17 @@ bcd2bin3:				; AL = ones, BL = tens
 	pop	bx			; restore BX
 	ret
 
-endif	; SKIP_INT8
+endif   ; TSR_CHECK
 
+ifdef PIC_SUP
+ ifdef USE_MASM
+if1
+if $ MOD 8 MOD 7
+%out No 8-byte alignment!
+endif
+ endif
+endif
+endif
 RCODE	ends				; end of ROM device driver code
 
 ; -------------------------------------------------------------------------
@@ -1230,10 +1330,85 @@ ICODE	segment	use16 public word 'ICODE'	; initialization code
 	
 	even				; start this on a word boundary
 reusable:
-	sign_on		db	'DRIDLE R1.10 	DR-DOS IDLE Driver',CR,LF
-	db 'Copyright (c) 1990 Digital Research Inc.	All rights reserved.',CR,LF
+ifdef PIC_SUP
+; Real mode doesn't like UMB vectors.
+ivt	dd	16 dup(?)
+
+v86	dd	?
+
+irq:	pop	ax			; Avoid stack overflow
+	cld
+	db	66h			; PUSH EAX
+	push	ax			;
+	xor	ax,ax
+	cli				; Replace vectors...
+	call	es:v86			; Virtual -> real mode
+	pushx	<cx,si,ds,es>
+	db	0Fh,1,0E1h		; SMSW CX
+	inc	ax
+	and	cx,ax
+	jnz	halt			; WIN /3 doesn't allow to read CR0.
+
+	push	ax
+	mov	di,CG:ivt
+	mov	si,70h*4		; Slave PIC
+	mov	ds,cx
+	push	cs
+	db	68h			; PUSH CG:HND
+	dw	CG:hnd			;
+	db	66h			; POP EAX
+	pop	ax			;
+	push	es
+	push	di
+	push	si
+pic2:	mov	cl,8
+pic1:
+	db	66h			; MOVSD
+	movsw				;
+	db	66h			; MOV [SI-4],EAX
+	mov	[si-4],ax		;
+	inc	ax			; Next vector
+	dec	cx
+	jnz	pic1
+	sub	si,70h*4
+	jnb	pic2
+
+	pop	di			; Restore vectors...
+	pop	si
+	pop	ds
+	mov	es,cx
+	pop	ax
+halt:	sti
+	hlt
+	popx	<es,ds,si,cx>
+	db	66h			; POP EAX
+	pop	ax			;
+	inc	ax
+	jmp	ax
+
+hnd:	rept	(length ivt)-1		; Implicit CLI
+	inc	ax
+	endm
+pic0:	add	ax,ax
+	mov	cl,8
+	db	66h			; REP MOVSD
+	rep	movsw			;
+	sub	di,70h*4
+	jnb	pic0
+
+	sub	si,ax
+	mov	al,1			; AX=1
+	db	66h			; PUSH DWORD PTR [SI]
+	push	[si]			;
+	jmp	v86			; Real -> virtual mode
+endif
+
+	sign_on		db	'DRIDLE R1.11 	DR-DOS IDLE Driver',CR,LF
+	db 'Copyright (c) 1990 Digital Research Inc.    All rights reserved.',CR,LF
 	db 'Copyright (c) 2023 Michal Necasek',CR,LF
-	db 'Copyright (c) 2025 Javier Gutierrez	Public domain.',CR,CR,LF
+	db 'Win3x.Org (gm86) enhancements integrated, 2026.',CR,LF
+	db 'Copyright (c) 2025-2026 Javier Gutierrez Public domain.',CR,CR,LF
+
 	db 'Using '
 	ifdef __386__
 		db '386+'
@@ -1244,7 +1419,11 @@ reusable:
 	ifdef VBOX_CPU_HALT
 		db ' VirtualBox idle'
 	else
+	 ifdef PIC_SUP
+		db ' EMM386 V2 idle'
+	 else
 		db ' HLT idle'
+	 endif
 	endif
 	db ' succesfuly installed.',CR,LF
 	db	EOM
@@ -1293,7 +1472,92 @@ dd_init:
 	mov	int16_cs_fixup,ax
 	mov	int8_cs_fixup,ax
 	mov	idle_cs_fixup,ax
-	
+        
+ifdef PIC_SUP
+	xor	si,si			; SI=0
+	cld
+	mov	ax,READ_RTC*256+' '	; scan the CONFIG.SYS line for a space
+	mov	ch,-1
+	les	di,RH2_BPB
+	repne	scasb
+;	clc
+	int	RTC_INT			; INT flushes the PIQ.
+	jc	buggy
+
+	shl	cx,1			; CY if RTC absent (or 12-hour PM mode)
+buggy:	sbb	word ptr pic,si		; allow IRQ0 when there is no RTC
+	cmp	byte ptr es:[di],LF
+	jne	parse_ok		; Option? -> skip the CPU detection
+
+	mov	ah,0f0h			; 8086 flags
+	push	ax
+	popf				; CLI preserves PIQ.
+	pushf
+	pop	di			; LOW DI=2
+	sub	byte ptr cs:piq,8
+piq:	dec	di			; INC DI if SMC check (Nx586)
+	sti
+	and	ax,di			; MD (NEC), NT and IOPL
+	jle	parse_ok		; 286 or earlier (ZR or NG)?
+
+	db	66h			; SMSW EAX (undoc.)
+	db	0Fh,1,0E0h
+	ror	ax,1			; SF=PE
+	cwd				; DX={-1;0}
+	db	66h			; SHL EAX,1
+	shl	ax,1
+	js	emm			; CPU cache absent?
+
+	db	66h			; PUSHFD
+	pushf
+	pop	bx
+	pop	ax
+	mov	cx,ax
+	xor	al,1 SHL (21-16)	; ID flag
+	push	ax
+	push	bx
+	db	66h			; POPFD
+	popf
+	db	66h			; PUSHFD
+	pushf
+	pop	bx
+	pop	ax
+	xor	ax,cx
+	xchg	ax,di
+	jz	cache			; No ID?
+
+	push	dx
+	mov	ax,1
+	db	66h			; CWDE
+	cbw
+	db	0Fh,0A2h		; CPUID
+	cmp	ah,5
+	mov	al,4
+	pop	dx
+	ja	cache			; P6?
+
+	sbb	al,1			; family 5 -> 3, family 4 -> 2
+cache:	mov	cpu,al
+emm:	mov	es,si
+	test	byte ptr es:47bh,20h
+	jz	flag			; No VDS?
+
+	mov	ax,8102h		; VDS Get Version
+	inc	dx
+	jnz	parse_ok		; Real mode?
+
+	int	4bh
+	cmp	bx,0edch		; DRI EMM386.SYS V2.x signature
+	jne	parse_ok		; No DRI EMM386 V2?
+
+	xor	si,si
+	cwd				; Bit 0: WIN /3
+	xchg	cx,ax			; CX <- version
+	jcxz	win386			; No Novell EXE?
+
+flag:	or	idle386,dx		; idle386 = TRUE when EMM386 V2 is found
+endif
+
 parse_ok:
 ; Tell the world that we are here.
 	mov	dx,CG:sign_on
@@ -1302,6 +1566,9 @@ parse_ok:
 	
 ; Tell DOS how much of us is here.
 	mov	ax,CG:reusable		; get pointer to last resident byte 
+ifdef PIC_SUP
+	add	ax,si			; Plus V86 callback
+endif
 	les	bx,req_ptr		; ES:BX -> request header
 	mov	RH0_RESIDENT,ax		; set end of device driver
 	mov	RH0_RESIDENT+2,cs
@@ -1310,7 +1577,34 @@ parse_ok:
 	pop	bx
 	pop	es
 	ret
-	
+
+ifdef PIC_SUP
+win386:	push	ds
+	xor	bx,bx			; Previous instance data (ES)
+	mov	ds,si
+	mov	di,300h			; Windows version
+	mov	ax,1605h		; Windows entry (EMMQXXX0->EMMXXXX0)
+	int	2fh
+	inc	ax			; Windows exit (vice versa)
+	int	2fh
+	mov	cx,ds
+	pop	ds
+	mov	word ptr v86+0,si	; V86 mode on/off
+	mov	word ptr v86+2,cx
+	jcxz	inst_fail		; If INSTALL=SUPERPCK.EXE /A+/R:0
+
+	mov	ax,12ffh		; MEMMAX /V
+	mov	bx,6
+	xor	cx,cx
+	int	2fh
+	mov	si,sign_on-reusable	; DR DOS 6 EMM386.SYS needs more room.
+	mov	idle386,CG:irq
+	dec	dx			; DX=-1 if /WINSTD switch
+	mov	ax,cs
+	cmp	ax,dx			;  else 1st UMB segment-1
+	jb	parse_ok		; Already in base memory?
+endif
+
 inst_fail:
 	mov	ax,RHS_ERROR+12		; return "general failure"
 	pop	bx

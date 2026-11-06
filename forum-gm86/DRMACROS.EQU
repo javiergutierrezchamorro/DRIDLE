@@ -1,0 +1,57 @@
+;;*********************************************************;
+;----------------------------------------------------------;
+; NAME: I:DRMACROS.EQU
+;-----------------------------------------------------------------------;
+; Copyright (C) 1990 Digital Research Inc.  All rights reserved.
+;-----------------------------------------------------------------------;
+FALSE	equ	0
+TRUE	equ	(not FALSE)
+
+ifndef	??Version			;; Turbo Assembler always knows RETF
+ifndef	retf				;; some versions of MASM do as well
+retf	macro				;; define far return macro for others
+	db	0cbh
+	endm
+endif
+endif
+
+jmps	macro	l
+	jmp	short l
+	endm
+
+pushx	macro	regs
+	irp	r,<regs>
+	push	r
+	endm
+	endm
+
+popx	macro	regs
+	irp	r,<regs>
+	pop	r
+	endm
+	endm
+
+incx	macro	regs
+	irp	r,<regs>
+	inc	r
+	endm
+	endm
+
+decx	macro	regs
+	irp	r,<regs>
+	dec	r
+	endm
+	endm
+
+rb	macro	count
+	db	count dup (?)
+	endm
+
+rw	macro	count
+	dw	count dup (?)
+	endm
+
+rd	macro	count
+	dd	count dup (?)
+	endm
+

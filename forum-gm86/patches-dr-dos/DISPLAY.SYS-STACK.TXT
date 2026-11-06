@@ -1,0 +1,63 @@
+SID
+f1000+200,1100+200,0
+rDISPLAY.SYS
+xcs
+cs+20
+ds+20
+.
+m65e,95d,1100
+m1100,95d+1100-65e,65e+1
+a5f3
+JMP	06FC+1
+
+a5fb
+CS:	MOV	[092A+1],AL
+
+a63B
+JZ	661+1
+
+a646
+CALL	0834+1
+JNB	0661+1
+LES	BP,[0016]
+CALL	094B+1
+
+a65b
+CALL	092B+1
+pop	bx
+
+a67c+1
+CALL	092B+1
+
+a6bc+1
+JNZ	064B
+
+a6c3+1
+JZ	064B
+
+a6ce+1
+CALL	094B+1
+
+a7ab+1
+MOV	DI,0794+1
+
+a90e+1
+CS:	MOV	AL,[092A+1]
+
+swes:12
+0
+.
+a1100
+es:lodsw
+add dx,ax
+cmp si,1100+200
+jb 1100
+not dx
+mov es:[12],dx
+nop
+
+g1100,1111
+wDISPLAY.SYS
+xdx
+.
+q

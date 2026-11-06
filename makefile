@@ -1,4 +1,4 @@
-all : dridle.sys dridlev.sys dridle3.sys dridle3v.sys tstidle.exe
+all : dridle.sys dridlev.sys dridle3.sys dridle3v.sys dridlep.sys tstidle.exe
 
 dridle.sys : dridle.exe
         exe2bin -q $< $@
@@ -12,6 +12,9 @@ dridle3.sys : dridle3.exe
 dridle3v.sys : dridle3v.exe
         exe2bin -q $< $@
 
+dridlep.sys : dridlep.exe
+        exe2bin -q $< $@
+
 
 dridle.exe : dridle.obj
         wlink sys dos op quiet, map disable 1014, 1023 file $<
@@ -23,6 +26,9 @@ dridle3.exe : dridle3.obj
         wlink sys dos op quiet, map disable 1014, 1023 file $<
 
 dridle3v.exe : dridle3v.obj
+        wlink sys dos op quiet, map disable 1014, 1023 file $<
+
+dridlep.exe : dridlep.obj
         wlink sys dos op quiet, map disable 1014, 1023 file $<
 
 
@@ -52,6 +58,13 @@ dridle3v.obj : dridle.asm driver.equ drmacros.equ idle.equ reqhdr.equ
         masm32 /DVBOX_CPU_HALT dridle.asm /3 /Fo dridle3v.obj;
 !else
         wasm -3 -q -wx -DVBOX_CPU_HALT dridle.asm -fo=dridle3v.obj
+!endif
+
+dridlep.obj : dridle.asm driver.equ drmacros.equ idle.equ reqhdr.equ
+!ifdef USE_MASM
+	masm32 /DPIC_SUP dridle.asm /Fo dridlep.obj;
+!else
+	wasm -q -wx -DPIC_SUP dridle.asm -fo=dridlep.obj
 !endif
 
 

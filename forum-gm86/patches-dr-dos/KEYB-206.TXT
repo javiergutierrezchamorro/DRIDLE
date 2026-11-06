@@ -1,0 +1,34 @@
+SID
+f8700,8800,0
+rKEYB.COM
+a24C
+JNZ	02b3
+
+a5AF
+jbe	05B4
+JMP	0307
+
+m5B6,5BF,5B4
+m5C2,5C7,5BE
+a5C4
+MOV	AL,AE
+OUT	64,AL
+
+
+sw12
+0
+.
+a8800
+lodsw
+add dx,ax
+cmp si,8800
+jb 8800
+not dx
+mov [12],dx
+nop
+
+g8800,880f
+wKEYB.COM
+xdx
+.
+q

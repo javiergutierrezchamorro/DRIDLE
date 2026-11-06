@@ -1,0 +1,9 @@
+ 3Fh	BYTE	Diskette motor status:
+			 bit 7 =1 current operation is write or format
+			       =0 current operation is read or verify
+			 bit 6    reserved (DMA enabled on 82077)
+			 bits 5-4 diskette drive number selected (0-3)
+			 bit 3 =1 diskette 3 motor on (PC,XT only)
+			 bit 2 =1 diskette 2 motor on (PC,XT only)
+			 bit 1 =1 diskette 1 motor on
+			 bit 0 =1 diskette 0 motor on
